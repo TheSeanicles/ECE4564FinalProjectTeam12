@@ -7,7 +7,18 @@ from pymongo import MongoClient
 import yaml
 from twilio.rest import Client
 import numpy as np
+from flask import Flask, render_template, redirect, url_for, request, flash
+from flask_login import current_user, login_user, logout_user, login_required, LoginManager
+from pymongo import MongoClient
+import json
+from bson import ObjectId
 
+#for objectID
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, ObjectId):
+            return str(o)
+        return json.JSONEncoder.default(self, o)
 
 # MONGODB HR FUNCTIONS
 def hr_update(t, usr, hr):
@@ -68,10 +79,12 @@ def get_thresh(t_select):
 
 # CONTACT INFO MONGODB FUNCTIONS
 
-def create_contact(name, affiliation, phone_num, addy, sms, voice):
+def create_contact(name, pwd, affiliation, affiliated, phone_num, addy, sms, voice):
     if isinstance(sms, bool) and isinstance(voice, bool):
         return {'username': name,
+                'password': pwd,
                 'affiliation': affiliation,
+                'affiliated': affiliated,
                 'phone_number': phone_num,
                 'address': addy,
                 'sms': sms,
@@ -79,7 +92,9 @@ def create_contact(name, affiliation, phone_num, addy, sms, voice):
                 }
     else:
         return {'username': name,
+                'password': pwd,
                 'affiliation': affiliation,
+                'affiliated': affiliated,
                 'phone_number': phone_num,
                 'address': addy,
                 'sms': True,
@@ -167,6 +182,96 @@ def send_alerts(msg):
 
 # END TWILIO FUNCTIONS
 
+#WEB API FUNCTIONS
+
+class User():
+    def __init__(self, name, id):
+        self.name = name
+        self.id = id #include more aspects needed here
+
+    @staticmethod
+    def is_authenticated():
+        return True
+
+    @staticmethod
+    def is_active():
+        return True
+
+    @staticmethod
+    def is_anonymous():
+        return False
+
+    def get_id(self):
+        print(JSONEncoder().encode(self.id))
+        return JSONEncoder().encode(self.id)
+
+
+# create the application object
+app = Flask(__name__)
+
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+app.config['SECRET_KEY'] = 'OOGABOOGAKEYHERE'#probably change key here
+
+# use decorators to link the function to a url
+@app.route('/')
+def home():
+    return render_template('index.html')  # return a string
+
+@app.route('/welcome')
+def welcome():
+    return render_template('welcome.html')  # render a template
+
+@app.route('/profile')
+@login_required
+def profile():
+    return render_template('profile.html', name=current_user.name)  # render a template
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
+
+@app.route('/addcontact', methods=['GET', 'POST'])
+@login_required
+def addcontact():
+    if request.method == 'POST':
+        mongoclient = MongoClient("mongodb://localhost:27017")
+        col = mongoclient['ECE4564_FinalProject']['users']
+        affiliated = current_user.id
+        col.insert_one(create_contact(request.form['name'], request.form['password'], request.form['affiliation'], affiliated, request.form['phone'], request.form['address'], request.form['sms'], request.form['voice']))
+        return redirect(url_for('addcontact'))
+    return render_template('addcontact.html')
+
+@login_manager.user_loader
+def load_user(id):
+    mongoclient = MongoClient("mongodb://localhost:27017")
+    col = mongoclient['ECE4564_FinalProject']['users']
+    query = col.find_one({"_id": ObjectId(id[1:-1])})
+    if query is None:
+        return None
+    return User(query['username'],id)#need to get query here
+
+# Route for handling the login page logic
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        mongoclient = MongoClient("mongodb://localhost:27017")
+        col = mongoclient['ECE4564_FinalProject']['users']
+        query = col.find_one({'username': request.form['name'], 'password': request.form['password']})
+        if query is None:
+            flash('Invalid Credentials. Please try again.')
+        else:
+            user = User(request.form['name'], query['_id'])
+            login_user(user, remember=True)#remember can change based on form
+            return redirect(url_for('profile'))
+    return render_template('login.html')
+
+#END WEB API FUNCTIONS
 
 # DECISION FUNCTION
 def detect_emergency():
@@ -206,7 +311,7 @@ def has_button_pressed():
 
 
 def main():
-    
+    app.run(debug=True)
     hr_update(datetime.datetime.now(), 'Sean', random.randint(60, 70))
 
 
