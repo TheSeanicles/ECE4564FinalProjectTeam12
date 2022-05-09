@@ -21,20 +21,20 @@ class JSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, o)
 
 # MONGODB HR FUNCTIONS
-def hr_update(t, usr, hr):
+def hr_update(co, t, usr, hr):
     mongo_client = MongoClient('mongodb://localhost:27017')
-    col = mongo_client['User_Heartrate']['u_hr']
+    col = mongo_client['User_Heartrate'][co]
     start_dict = {'timestamp': t,
                   'metadata': usr,
                   'hr': hr}
     col.insert_one(start_dict)
-    detect_emergency()
+    detect_emergency(co)
 
 
-def hr_grab(t_select):
+def hr_grab(co, t_select):
     thresh = get_thresh(t_select)
     mongo_client = MongoClient('mongodb://localhost:27017')
-    col = mongo_client['User_Heartrate']['u_hr']
+    col = mongo_client['User_Heartrate'][co]
     return_dict = {}
     for t in col.find():
         if t['timestamp'] >= thresh:
@@ -202,7 +202,6 @@ class User():
         return False
 
     def get_id(self):
-        print(JSONEncoder().encode(self.id))
         return JSONEncoder().encode(self.id)
 
 
@@ -220,14 +219,28 @@ app.config['SECRET_KEY'] = 'OOGABOOGAKEYHERE'#probably change key here
 def home():
     return render_template('index.html')  # return a string
 
-@app.route('/welcome')
-def welcome():
-    return render_template('welcome.html')  # render a template
-
-@app.route('/profile')
+@app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
-    return render_template('profile.html', name=current_user.name)  # render a template
+    data = []
+    if request.method == 'POST':
+        mongoclient = MongoClient("mongodb://localhost:27017")
+        col = mongoclient['ECE4564_FinalProject']['users']
+        query = col.find_one({"_id": ObjectId(current_user.id[1:-1])})
+        if query["affiliated"] == "Self":
+            col2 = mongoclient['User_Heartrate'][current_user.id[1:-1]]
+        else:
+            col2 = mongoclient['User_Heartrate'][query["affiliated"][1:-1]]
+        try:
+            a = int(request.form["hist"])
+            query2 = col2.find({},{"_id": 0, "hr": 1, "timestamp": 1}).sort("_id",-1).limit(a)
+            if query2 is None:
+                flash("No Results Found")
+            for doc in query2:
+                data.append([doc['hr'], doc['timestamp']])
+        except:
+            flash("Incorrect Input Type, Please Put A number")
+    return render_template('profile.html', name=current_user.name, data = data)  # render a template
 
 @app.route('/logout')
 @login_required
@@ -258,7 +271,6 @@ def load_user(id):
 # Route for handling the login page logic
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    error = None
     if request.method == 'POST':
         mongoclient = MongoClient("mongodb://localhost:27017")
         col = mongoclient['ECE4564_FinalProject']['users']
@@ -267,15 +279,41 @@ def login():
             flash('Invalid Credentials. Please try again.')
         else:
             user = User(request.form['name'], query['_id'])
-            login_user(user, remember=True)#remember can change based on form
+            remember = True if request.form.get('remember') else False
+            login_user(user, remember=remember)#remember can change based on form
             return redirect(url_for('profile'))
     return render_template('login.html')
+
+@app.route('/viewcontacts')
+@login_required
+def viewcontacts():
+    data = []
+    mongoclient = MongoClient("mongodb://localhost:27017")
+    col = mongoclient['ECE4564_FinalProject']['users']
+    query = col.find({"affiliated": current_user.id}).sort("_id",-1)
+    if query is None:
+        flash("No Results Found")
+    for doc in query:
+        data.append([doc['username'], doc['affiliation'], doc['phone_number'], doc['address']])
+    return render_template('viewcontacts.html', data = data)  # render a template
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        mongoclient = MongoClient("mongodb://localhost:27017")
+        col = mongoclient['ECE4564_FinalProject']['users']
+        col.insert_one(create_contact(request.form['name'], request.form['password'], 'Patient', 'Self', request.form['phone'], request.form['address'], 'Patient', 'Patient'))
+        query = col.find_one({'username': request.form['name'], 'password': request.form['password']})
+        user = User(request.form['name'], query['_id'])
+        login_user(user, remember=False)#remember can change based on form
+        return redirect(url_for('profile'))
+    return render_template('signup.html')
 
 #END WEB API FUNCTIONS
 
 # DECISION FUNCTION
-def detect_emergency():
-    hr_data = hr_grab('2min')
+def detect_emergency(id):
+    hr_data = hr_grab(id, '2min')
     hr_spike = False
     hr_sink = False
     panic_b = has_button_pressed()
@@ -311,8 +349,8 @@ def has_button_pressed():
 
 
 def main():
+    hr_update('62773a6537c648d63e8bf302', datetime.datetime.now(), 'Sean', random.randint(60, 70))
     app.run(debug=True)
-    hr_update(datetime.datetime.now(), 'Sean', random.randint(60, 70))
 
 
 if __name__ == '__main__':

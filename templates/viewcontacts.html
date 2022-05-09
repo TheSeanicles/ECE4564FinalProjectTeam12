@@ -2,19 +2,8 @@
 
 {% block content %}
 <h1 class="title">
-  Welcome, {{ name }}!
+  Your Contacts
 </h1>
-<h2 class="subtitle">
-  Input Amount of Records you Wish to View
-</h2>
-<form method="POST" action="/profile">
-    <div class="field">
-        <div class="control">
-            <input class="input is-large" type="hist" name="hist" placeholder="Amount of Records" autofocus="">
-        </div>
-    </div>
-	<button class="button is-block is-info is-large is-fullwidth">Search</button>
-</form>
 <style>
  
 table {
@@ -33,7 +22,7 @@ th {
 
 th,
 td {
-  width: 50%;
+  width: 25%;
   text-align: center;
   border: 1px solid black;
   padding: 5px;
@@ -43,8 +32,10 @@ td {
 <table  cellspacing="0">
   <thead class="subtitle">
     <tr>
-		<th>Heartrate</th>
-        <th>Timestamp</th>
+		<th>Name</th>
+        <th>Affiliation</th>
+		<th>Phone</th>
+		<th>Address</th>
     </tr>
     </thead>    
     <tbody>
@@ -52,6 +43,8 @@ td {
             <tr>
                 <td>{{row[0]}}</td>
                 <td>{{row[1]}}</td>
+				<td>{{row[2]}}</td>
+				<td>{{row[3]}}</td>
             </tr>
         {% endfor %}
     </tbody>
